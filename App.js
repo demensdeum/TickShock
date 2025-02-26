@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, AppState } from
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const TimerApp = () => {
-  const [time, setTime] = useState(0);
+  const [elapsedTime, setElapsedTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [startTime, setStartTime] = useState(null);
   const [showReset, setShowReset] = useState(false);
@@ -11,14 +11,19 @@ const TimerApp = () => {
   useEffect(() => {
     const loadTimerState = async () => {
       const savedStartTime = await AsyncStorage.getItem('startTime');
+      const savedElapsedTime = await AsyncStorage.getItem('elapsedTime');
       const savedIsRunning = await AsyncStorage.getItem('isRunning');
 
-      if (savedStartTime) {
+      if (savedElapsedTime) {
+        setElapsedTime(parseInt(savedElapsedTime, 10));
+      }
+
+      if (savedStartTime && savedIsRunning === 'true') {
         const startUnix = parseInt(savedStartTime, 10);
         const now = Date.now();
-        setStartTime(startUnix);
-        setTime(savedIsRunning === 'true' ? now - startUnix : 0);
-        setIsRunning(savedIsRunning === 'true');
+        setElapsedTime(prev => prev + (now - startUnix)); // Add time since last start
+        setStartTime(now);
+        setIsRunning(true);
       }
     };
     loadTimerState();
@@ -28,15 +33,16 @@ const TimerApp = () => {
     let interval;
     if (isRunning) {
       interval = setInterval(() => {
-        setTime(Date.now() - startTime);
+        setElapsedTime(prevElapsedTime => prevElapsedTime + 10);
       }, 10);
     } else {
       clearInterval(interval);
     }
+    AsyncStorage.setItem('elapsedTime', elapsedTime.toString());
     AsyncStorage.setItem('isRunning', isRunning.toString());
-    setShowReset(time > 0);
+    setShowReset(elapsedTime > 0);
     return () => clearInterval(interval);
-  }, [isRunning, startTime]);
+  }, [isRunning, elapsedTime]);
 
   useEffect(() => {
     const handleAppStateChange = async (nextAppState) => {
@@ -45,9 +51,10 @@ const TimerApp = () => {
         const savedIsRunning = await AsyncStorage.getItem('isRunning');
 
         if (savedIsRunning === 'true' && savedStartTime) {
+          const now = Date.now();
           const startUnix = parseInt(savedStartTime, 10);
-          setStartTime(startUnix);
-          setTime(Date.now() - startUnix);
+          setElapsedTime(prev => prev + (now - startUnix));
+          setStartTime(now);
           setIsRunning(true);
         }
       }
@@ -58,20 +65,25 @@ const TimerApp = () => {
   }, []);
 
   const handleStartPause = async () => {
-    if (!isRunning) {
+    if (isRunning) {
+      setIsRunning(false);
+      await AsyncStorage.setItem('elapsedTime', elapsedTime.toString());
+      await AsyncStorage.removeItem('startTime');
+    } else {
       const now = Date.now();
       setStartTime(now);
+      setIsRunning(true);
       await AsyncStorage.setItem('startTime', now.toString());
     }
-    setIsRunning(!isRunning);
   };
 
   const resetTimer = async () => {
     setIsRunning(false);
-    setTime(0);
+    setElapsedTime(0);
     setStartTime(null);
     setShowReset(false);
     await AsyncStorage.removeItem('startTime');
+    await AsyncStorage.removeItem('elapsedTime');
     await AsyncStorage.removeItem('isRunning');
   };
 
@@ -86,7 +98,7 @@ const TimerApp = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Text style={styles.timer}>{formatTime(time)}</Text>
+        <Text style={styles.timer}>{formatTime(elapsedTime)}</Text>
         <TouchableOpacity style={styles.button} onPress={handleStartPause}>
           <Text style={styles.buttonText}>{isRunning ? 'Pause' : 'Start'}</Text>
         </TouchableOpacity>
