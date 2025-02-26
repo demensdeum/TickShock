@@ -1,0 +1,2 @@
+# TickShock
+ReactNative Timer app 
